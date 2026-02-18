@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="reader-layout">
+    <div class="text-panel" id="textPanel">
+        {% if book %}
+        <div class="prose">
+            <h2>{{ book.title }}</h2>
+            <div id="textContent" class="book-content">{{ book.content }}</div>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <h2>No book loaded</h2>
+            <a href="/" class="btn btn-primary">Go to Library</a>
+        </div>
+        {% endif %}
+    </div>
+
+    <div class="controls-panel">
+        <div class="player-card">
+            <h3>Audio Controls</h3>
+
+            <div class="control-group">
+                <label>Voice</label>
+                <select id="voiceSelect" class="form-select">
+                    {% for voice in voices %}
+                    <option value="{{ voice.id }}">{{ voice.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label>Speed: <span id="speedValue">1.0x</span></label>
+                <input type="range" id="speedRange" min="0.5" max="3.0" step="0.1" value="1.0">
+            </div>
+
+            <div class="control-group">
+                <label>Pitch: <span id="pitchValue">0Hz</span></label>
+                <input type="range" id="pitchRange" min="-50" max="50" step="5" value="0">
+            </div>
+
+            <div class="playback-controls">
+                <button id="playBtn" class="btn btn-primary btn-icon">
+                    Play
+                </button>
+                <button id="exportBtn" class="btn btn-secondary" style="margin-top: 10px; width: 100%;">
+                    Export MP3
+                </button>
+            </div>
+            <div id="exportStatus" style="margin-top: 10px; font-size: 0.8em; color: var(--primary);"></div>
+        </div>
+
+        <audio id="audioPlayer" style="display:none;"></audio>
+    </div>
+</div>
+
+<style>
+    .form-select {
+        width: 100%;
+        padding: 10px;
+        background: var(--bg-dark);
+        border: 1px solid var(--border);
+        color: white;
+        border-radius: 8px;
+        margin-top: 5px;
+    }
+
+    .control-group {
+        margin-bottom: 20px;
+    }
+
+    .book-content {
+        line-height: 1.8;
+        font-size: 1.1rem;
+        white-space: pre-wrap;
+    }
+
+    input[type=range] {
+        width: 100%;
+    }
+
+    .empty-state {
+        text-align: center;
+        padding-top: 100px;
+        color: var(--text-muted);
+    }
+</style>
+
+{% if book %}
+<script src="/static/js/player.js"></script>
+{% endif %}
+{% endblock %}
