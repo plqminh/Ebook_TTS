@@ -19,4 +19,5 @@ PyQt6
 pyqtdarktheme
 PyYAML
 numpy
-vieneu
+omnivoice
+faster-whisper

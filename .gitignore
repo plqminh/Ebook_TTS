@@ -34,3 +34,4 @@ Desktop.ini
 *.gguf
 *.pt
 *.onnx
+*.safetensors

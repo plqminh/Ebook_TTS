@@ -1,6 +1,7 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout, 
                              QLineEdit, QPushButton, QLabel, QCheckBox, QComboBox, QTableWidget, 
-                             QTableWidgetItem, QHeaderView, QFileDialog, QProgressBar, QMessageBox)
+                             QTableWidgetItem, QHeaderView, QFileDialog, QProgressBar, QMessageBox,
+                             QSpinBox)
 from PyQt6.QtCore import Qt, pyqtSignal
 
 class BatchWidget(QWidget):
@@ -20,26 +21,15 @@ class BatchWidget(QWidget):
         
         # Engine Selection
         self.combo_engine = QComboBox()
-        self.combo_engine.addItems(["Edge TTS", "Google TTS", "VieNeu-TTS"])
+        self.combo_engine.addItems(["Edge TTS", "Google TTS", "OmniVoice"])
         self.combo_engine.currentTextChanged.connect(self.on_engine_changed)
         
         engine_row = QHBoxLayout()
         engine_row.addWidget(self.combo_engine)
         form_layout.addRow("TTS Engine:", engine_row)
 
-        # Model (Visible only for VieNeu)
-        self.edit_model = QLineEdit()
-        self.btn_browse_model = QPushButton("Browse")
-        self.btn_browse_model.clicked.connect(self.browse_model)
-        
-        self.model_container = QWidget()
-        model_layout = QHBoxLayout(self.model_container)
-        model_layout.setContentsMargins(0, 0, 0, 0)
-        model_layout.addWidget(self.edit_model)
-        model_layout.addWidget(self.btn_browse_model)
-        
-        self.lbl_model = QLabel("Model (.pt/.onnx/config):")
-        form_layout.addRow(self.lbl_model, self.model_container)
+        self.edit_model = QLineEdit() # Kept for compatibility, not added to layout
+        self.edit_model.setText("OmniVoice (auto)")
         
         # Ref Audio (Visible only for VieNeu, maybe cloning later?)
         self.combo_ref = QComboBox()
@@ -86,8 +76,24 @@ class BatchWidget(QWidget):
         self.btn_sel_all.clicked.connect(self.select_all)
         self.btn_sel_none.clicked.connect(self.select_none)
         
+        # Fast Range Selection
+        self.spin_from = QSpinBox()
+        self.spin_from.setMinimum(1)
+        self.spin_to = QSpinBox()
+        self.spin_to.setMinimum(1)
+        self.btn_sel_range = QPushButton("Select Range")
+        self.btn_sel_range.clicked.connect(self.select_range)
+        
         sel_btn_layout.addWidget(self.btn_sel_all)
         sel_btn_layout.addWidget(self.btn_sel_none)
+        
+        sel_btn_layout.addSpacing(20)
+        sel_btn_layout.addWidget(QLabel("From:"))
+        sel_btn_layout.addWidget(self.spin_from)
+        sel_btn_layout.addWidget(QLabel("To:"))
+        sel_btn_layout.addWidget(self.spin_to)
+        sel_btn_layout.addWidget(self.btn_sel_range)
+        
         sel_btn_layout.addStretch()
         main_layout.addLayout(sel_btn_layout)
         
@@ -100,6 +106,8 @@ class BatchWidget(QWidget):
         
         self.btn_setup = QPushButton("Auto-Setup Resources")
         self.btn_setup.setStyleSheet("background-color: #1f6aa5; padding: 10px;")
+        self.btn_setup.setFixedHeight(50)
+        self.btn_setup.setVisible(False)  # Hidden as OmniVoice handles its own setup
         self.btn_setup.setFixedHeight(50)
         
         self.btn_stop = QPushButton("STOP")
@@ -132,9 +140,6 @@ class BatchWidget(QWidget):
         # Trigger initial state
         self.on_engine_changed(self.combo_engine.currentText())
 
-    def browse_model(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Select Model", "", "Model/Config (*.pt *.onnx *.json *.yaml *.gguf)")
-        if path: self.edit_model.setText(path)
 
     def on_ref_changed(self, index):
         if self.combo_ref.currentText() == "Browse...":
@@ -157,8 +162,30 @@ class BatchWidget(QWidget):
             item = self.table_chapters.item(row, 0)
             item.setCheckState(Qt.CheckState.Unchecked)
 
+    def select_range(self):
+        start_idx = self.spin_from.value() - 1
+        end_idx = self.spin_to.value() - 1
+        
+        for row in range(self.table_chapters.rowCount()):
+            item = self.table_chapters.item(row, 0)
+            if start_idx <= row <= end_idx:
+                item.setCheckState(Qt.CheckState.Checked)
+            else:
+                item.setCheckState(Qt.CheckState.Unchecked)
+
     def populate_chapters(self, chapters):
-        self.table_chapters.setRowCount(len(chapters))
+        total = len(chapters)
+        self.table_chapters.setRowCount(total)
+        
+        if total > 0:
+            self.spin_from.setMaximum(total)
+            self.spin_to.setMaximum(total)
+            self.spin_from.setValue(1)
+            self.spin_to.setValue(total)
+        else:
+            self.spin_from.setMaximum(1)
+            self.spin_to.setMaximum(1)
+            
         for i, title in enumerate(chapters):
             # Checkbox Item
             chk_item = QTableWidgetItem()
@@ -169,13 +196,12 @@ class BatchWidget(QWidget):
             self.table_chapters.setItem(i, 1, QTableWidgetItem(title))
 
     def on_engine_changed(self, engine_name):
-        is_vieneu = "VieNeu" in engine_name
+        is_omnivoice = "OmniVoice" in engine_name
+        is_local = is_omnivoice
         
         # Toggle Visibility
-        self.lbl_model.setVisible(is_vieneu)
-        self.model_container.setVisible(is_vieneu)
-        self.lbl_ref.setVisible(is_vieneu)
-        self.ref_container.setVisible(is_vieneu)
+        self.lbl_ref.setVisible(is_local)
+        self.ref_container.setVisible(is_local)
         
         # Voice combo is always visible
         self.lbl_voice.setVisible(True)
@@ -189,7 +215,7 @@ class BatchWidget(QWidget):
         engine_map = {
             "Edge TTS": "edge",
             "Google TTS": "google",
-            "VieNeu-TTS": "vieneu"
+            "OmniVoice": "omnivoice",
         }
         current_engine = self.combo_engine.currentText()
         engine_key = engine_map.get(current_engine, "edge")

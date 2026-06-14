@@ -66,49 +66,48 @@ class ReaderWidget(QWidget):
         self.combo_voice = QComboBox()
         controls_layout.addWidget(self.combo_voice)
         
-        controls_layout.addWidget(QLabel("Speed:"))
-        self.slider_speed = QSlider(Qt.Orientation.Horizontal)
-        self.slider_speed.setRange(50, 200) # 0.5x to 2.0x
-        self.slider_speed.setValue(100)
-        self.slider_speed.setFixedWidth(100)
-        controls_layout.addWidget(self.slider_speed)
+        controls_layout.addWidget(QLabel("Expression:"))
+        self.slider_expression = QSlider(Qt.Orientation.Horizontal)
+        self.slider_expression.setRange(1, 20)  # 0.1 to 2.0 (value / 10)
+        self.slider_expression.setValue(10)       # Default: 1.0
+        self.slider_expression.setFixedWidth(100)
+        self.lbl_expression = QLabel("1.0")
+        self.slider_expression.valueChanged.connect(
+            lambda v: self.lbl_expression.setText(f"{v / 10:.1f}")
+        )
+        controls_layout.addWidget(self.slider_expression)
+        controls_layout.addWidget(self.lbl_expression)
         
         controls_layout.addStretch()
         
         self.layout.addLayout(controls_layout)
 
     def set_text(self, text):
-        self.text_browser.setPlainText(text)
+        self._plain_text = text
+        self.text_browser.setHtml(self._build_html(text))
 
     def append_text(self, text):
         self.text_browser.append(text)
 
+    def _build_html(self, text, highlight_sentence=None):
+        """Build HTML with optional sentence highlighting."""
+        import html
+        escaped = html.escape(text)
+        if highlight_sentence:
+            escaped_sentence = html.escape(highlight_sentence)
+            escaped = escaped.replace(
+                escaped_sentence,
+                f'<span style="background-color: yellow; color: black;">{escaped_sentence}</span>',
+                1  # only first match
+            )
+        # Preserve whitespace/newlines with pre-wrap
+        return f'<div style="font-size: 14pt; font-family: sans-serif; white-space: pre-wrap; line-height: 1.5;">{escaped}</div>'
+
     def highlight_text(self, text):
-        if not text: return
+        if not text or not hasattr(self, '_plain_text'): return
+        self.text_browser.setHtml(self._build_html(self._plain_text, text))
         
-        cursor = self.text_browser.textCursor()
-        # Reset highlighting (Select All -> Format -> Clear Background)
-        # This is expensive for large text. Better to just clear previous selection if tracked.
-        # Naive reset:
-        cursor.select(cursor.SelectionType.Document)
-        fmt = cursor.charFormat()
-        fmt.setBackground(Qt.GlobalColor.transparent)
-        cursor.setCharFormat(fmt)
-        cursor.clearSelection()
-        
-        # Find new text
-        # Move to start
-        cursor.setPosition(0)
-        self.text_browser.setTextCursor(cursor)
-        
+        # Scroll to the highlighted text
         found = self.text_browser.find(text)
         if found:
-            # Apply Highlight
-            fmt = self.text_browser.textCursor().charFormat()
-            from PyQt6.QtGui import QColor
-            fmt.setBackground(QColor("yellow"))
-            fmt.setForeground(QColor("black"))
-            self.text_browser.textCursor().setCharFormat(fmt)
-            
-            # Ensure visible
             self.text_browser.ensureCursorVisible()
