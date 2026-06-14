@@ -43,9 +43,11 @@ class BatchService:
 
     @staticmethod
     def _chunk_text(text, engine="edge"):
-        """Split text into engine-appropriate chunks for TTS processing."""
-        from app.services.text_chunker import chunk_text
-        return chunk_text(text, engine=engine)
+        """Split text into paragraphs for batch processing."""
+        import re
+        # Split by one or more newlines to extract paragraphs
+        paragraphs = [p.strip() for p in re.split(r'\n+', text) if p.strip()]
+        return paragraphs
 
     # ── Main Conversion ────────────────────────────────────────────────
 
