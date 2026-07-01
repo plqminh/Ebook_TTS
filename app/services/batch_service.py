@@ -136,7 +136,8 @@ class BatchService:
                     return i, None
 
                 progress_cb(f"Processing chunk {i+1}/{len(chunks)}: {chunk[:40]}...")
-                chunk_path = temp_dir / f"chunk_{i}.wav"
+                ext = ".mp3" if engine in ("edge", "google") else ".wav"
+                chunk_path = temp_dir / f"chunk_{i}{ext}"
 
                 for attempt in range(max_retries):
                     try:

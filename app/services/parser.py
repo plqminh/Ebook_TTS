@@ -4,8 +4,6 @@ from ebooklib import epub
 from bs4 import BeautifulSoup
 import docx
 from pathlib import Path
-from typing import Optional
-
 from typing import List, Dict, Optional
 
 class FileParser:

@@ -5,7 +5,8 @@ python-multipart
 beautifulsoup4
 edge-tts
 pydub
-pdfplumber
+PyMuPDF
+ffmpeg-python
 ebooklib
 python-docx
 pytesseract

@@ -397,6 +397,7 @@ def main():
                                            "OmniVoice models are downloaded automatically via HuggingFace Hub on first use.\nNo manual setup is required.")
 
             def start_batch_conversion(self):
+                from PyQt6.QtWidgets import QMessageBox
                 # Validation
                 indices = []
                 for row in range(self.batch_view.table_chapters.rowCount()):
@@ -404,7 +405,6 @@ def main():
                          indices.append(row)
                          
                 if not indices:
-                    from PyQt6.QtWidgets import QMessageBox
                     QMessageBox.warning(self, "Error", "No chapters selected.")
                     return
 
