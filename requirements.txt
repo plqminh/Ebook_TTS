@@ -1,7 +1,3 @@
-fastapi
-uvicorn
-jinja2
-python-multipart
 beautifulsoup4
 edge-tts
 pydub
@@ -11,7 +7,6 @@ ebooklib
 python-docx
 pytesseract
 pillow
-aiofiles
 requests
 gTTS
 soundfile

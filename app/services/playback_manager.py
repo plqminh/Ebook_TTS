@@ -3,6 +3,9 @@ from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from pathlib import Path
 import threading
 import time
+import shutil
+
+from app.logger import logger
 
 
 # Dedicated background thread that continuously generates upcoming sentences
@@ -17,14 +20,18 @@ class GeneratorThread(QThread):
         self.sentences = []
         self.voice_id = ""
         self.temperature = 1.0
+        self.rate = "+0%"
+        self.pitch = "+0Hz"
         self._next_to_gen = 0   # Next sentence index to generate
         self._stop_flag = False
         self._wake = threading.Event()
 
-    def setup(self, sentences, voice_id, temperature=1.0):
+    def setup(self, sentences, voice_id, temperature=1.0, rate="+0%", pitch="+0Hz"):
         self.sentences = sentences
         self.voice_id = voice_id
         self.temperature = temperature
+        self.rate = rate
+        self.pitch = pitch
         self._next_to_gen = 0
         self._stop_flag = False
 
@@ -79,10 +86,13 @@ class GeneratorThread(QThread):
                         output_path=str(out_path),
                         engine=engine,
                         temperature=self.temperature,
+                        rate=self.rate,
+                        pitch=self.pitch,
                     ))
 
                     self.generated.emit(idx, actual_path)
                 except Exception as e:
+                    logger.error(f"Generation error for sentence {idx}: {e}")
                     self.gen_error.emit(idx, str(e))
 
                 if self._stop_flag:
@@ -108,6 +118,8 @@ class PlaybackManager(QObject):
         self.is_playing = False
         self.voice_id = "vi"  # Default
         self.temperature = 1.0
+        self.rate = "+0%"
+        self.pitch = "+0Hz"
 
         # Keep audio device awake using a silent loop player
         # This prevents Windows WASAPI initialization latency from clipping the first words
@@ -189,7 +201,8 @@ class PlaybackManager(QObject):
         self._gen_thread = GeneratorThread(self.tts_service)
         self._gen_thread.generated.connect(self._on_audio_ready)
         self._gen_thread.gen_error.connect(self._on_gen_error)
-        self._gen_thread.setup(self.sentences, self.voice_id, self.temperature)
+        self._gen_thread.setup(self.sentences, self.voice_id, self.temperature,
+                               self.rate, self.pitch)
         self._gen_thread.start()
         self._gen_thread.wake()
 
@@ -204,7 +217,8 @@ class PlaybackManager(QObject):
         if self.current_index not in self.audio_cache:
             self._gen_thread.skip_to(self.current_index)
             if not self._gen_thread.isRunning():
-                self._gen_thread.setup(self.sentences, self.voice_id, self.temperature)
+                self._gen_thread.setup(self.sentences, self.voice_id, self.temperature,
+                                       self.rate, self.pitch)
                 self._gen_thread.start()
             self._gen_thread.wake()
 
@@ -258,9 +272,113 @@ class PlaybackManager(QObject):
             self._gen_thread = GeneratorThread(self.tts_service)
             self._gen_thread.generated.connect(self._on_audio_ready)
             self._gen_thread.gen_error.connect(self._on_gen_error)
-            self._gen_thread.setup(self.sentences, self.voice_id, self.temperature)
+            self._gen_thread.setup(self.sentences, self.voice_id, self.temperature,
+                                   self.rate, self.pitch)
             self._gen_thread.start()
             self._gen_thread.wake()
+
+    # ── Speed & Pitch ──────────────────────────────────────────────────
+
+    def set_rate(self, rate_str):
+        """Set TTS speaking rate, e.g. '+20%' or '-10%'."""
+        self.rate = rate_str
+        self.audio_cache.clear()
+        self._restart_generator()
+
+    def set_pitch(self, pitch_str):
+        """Set TTS pitch offset, e.g. '+10Hz' or '-5Hz'."""
+        self.pitch = pitch_str
+        self.audio_cache.clear()
+        self._restart_generator()
+
+    def _restart_generator(self):
+        """Restart the generator thread with current settings."""
+        if self._gen_thread.isRunning():
+            self._gen_thread.request_stop()
+            self._gen_thread.wait(3000)
+        if self.sentences:
+            self._gen_thread = GeneratorThread(self.tts_service)
+            self._gen_thread.generated.connect(self._on_audio_ready)
+            self._gen_thread.gen_error.connect(self._on_gen_error)
+            self._gen_thread.setup(self.sentences, self.voice_id, self.temperature,
+                                   self.rate, self.pitch)
+            self._gen_thread.start()
+            self._gen_thread.skip_to(self.current_index)
+            self._gen_thread.wake()
+
+    # ── Sentence Navigation ────────────────────────────────────────────
+
+    def skip_next(self):
+        """Skip to the next sentence."""
+        if self.current_index < len(self.sentences) - 1:
+            self._players[self._active_player].stop()
+            self.current_index += 1
+            self._next_preloaded = False
+            self._standby_ready = False
+            self._waiting_for_active_load = False
+            self._waiting_for_standby = False
+            if self.is_playing:
+                self._try_play_current()
+            self.sig_sentence_changed.emit(
+                self.current_index, self.sentences[self.current_index]
+            )
+
+    def skip_prev(self):
+        """Skip to the previous sentence."""
+        if self.current_index > 0:
+            self._players[self._active_player].stop()
+            self.current_index -= 1
+            self._next_preloaded = False
+            self._standby_ready = False
+            self._waiting_for_active_load = False
+            self._waiting_for_standby = False
+            if self.is_playing:
+                self._try_play_current()
+            self.sig_sentence_changed.emit(
+                self.current_index, self.sentences[self.current_index]
+            )
+
+    def set_position(self, sentence_index):
+        """Jump to a specific sentence index (for resume)."""
+        if 0 <= sentence_index < len(self.sentences):
+            self.current_index = sentence_index
+            self._next_preloaded = False
+            self._standby_ready = False
+
+    # ── Temp File Cleanup ──────────────────────────────────────────────
+
+    @staticmethod
+    def cleanup_temp_audio():
+        """Delete all files in the temp_audio/ directory."""
+        temp_dir = Path("temp_audio")
+        if temp_dir.exists():
+            count = 0
+            for f in temp_dir.iterdir():
+                if f.is_file():
+                    try:
+                        f.unlink()
+                        count += 1
+                    except Exception:
+                        pass  # File may be in use
+            logger.info(f"Cleaned up {count} temp audio files.")
+            return count
+        return 0
+
+    # ── Graceful Shutdown ──────────────────────────────────────────────
+
+    def shutdown(self):
+        """Stop all playback and threads. Call on app close."""
+        self.is_playing = False
+        for p in self._players:
+            p.stop()
+        self._silence_player.stop()
+
+        if self._gen_thread.isRunning():
+            self._gen_thread.request_stop()
+            self._gen_thread.wait(3000)
+        logger.info("PlaybackManager shut down.")
+
+    # ── Internal Playback Logic ────────────────────────────────────────
 
     def _try_play_current(self):
         """Play current sentence if audio is ready, otherwise wait for generator."""
@@ -350,7 +468,7 @@ class PlaybackManager(QObject):
 
         if index == self.current_index:
             self.retry_count += 1
-            print(f"Gen Error (Retry {self.retry_count}): {err}")
+            logger.warning(f"Gen Error (Retry {self.retry_count}): {err}")
 
             if self.retry_count >= self.MAX_RETRIES:
                 # Skip this sentence
@@ -443,7 +561,7 @@ class PlaybackManager(QObject):
                 self._switching = False
 
         elif status == QMediaPlayer.MediaStatus.InvalidMedia:
-            print(f"Media Error: Invalid file for sentence {self.current_index + 1}, retrying...")
+            logger.warning(f"Invalid media for sentence {self.current_index + 1}, retrying...")
             # Retry once by re-setting the source instead of immediately skipping
             if self.is_playing and self.current_index in self.audio_cache:
                 self.retry_count += 1

@@ -3,6 +3,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QFormLayout,
                              QTableWidgetItem, QHeaderView, QFileDialog, QProgressBar, QMessageBox,
                              QSpinBox)
 from PyQt6.QtCore import Qt, pyqtSignal
+from pathlib import Path
 
 class BatchWidget(QWidget):
     def __init__(self):
@@ -55,6 +56,21 @@ class BatchWidget(QWidget):
         # Merge Option
         self.chk_merge = QCheckBox("Merge all chapters into ONE MP3")
         form_layout.addRow("", self.chk_merge)
+
+        # Output Directory
+        self.edit_output_dir = QLineEdit()
+        self.edit_output_dir.setText(str(Path("batch_output").resolve()))
+        self.edit_output_dir.setReadOnly(True)
+        self.btn_browse_output = QPushButton("📁")
+        self.btn_browse_output.setFixedWidth(30)
+        self.btn_browse_output.clicked.connect(self._browse_output_dir)
+
+        out_container = QWidget()
+        out_layout = QHBoxLayout(out_container)
+        out_layout.setContentsMargins(0, 0, 0, 0)
+        out_layout.addWidget(self.edit_output_dir, 1)
+        out_layout.addWidget(self.btn_browse_output)
+        form_layout.addRow("Output Folder:", out_container)
         
         main_layout.addLayout(form_layout)
         
@@ -110,12 +126,19 @@ class BatchWidget(QWidget):
         self.btn_setup.setVisible(False)  # Hidden as OmniVoice handles its own setup
         self.btn_setup.setFixedHeight(50)
         
+        self.btn_pause = QPushButton("⏸ PAUSE")
+        self.btn_pause.setStyleSheet("background-color: #f0ad4e; color: white; padding: 10px; font-weight: bold;")
+        self.btn_pause.setFixedHeight(50)
+        self.btn_pause.setEnabled(False)
+        self.btn_pause.clicked.connect(self._toggle_pause)
+
         self.btn_stop = QPushButton("STOP")
         self.btn_stop.setStyleSheet("background-color: #d9534f; color: white; padding: 10px; font-weight: bold;")
         self.btn_stop.setFixedHeight(50)
         self.btn_stop.setEnabled(False) # Default disabled
         
         action_layout.addWidget(self.btn_start)
+        action_layout.addWidget(self.btn_pause)
         action_layout.addWidget(self.btn_stop)
         action_layout.addWidget(self.btn_setup)
         
@@ -230,3 +253,26 @@ class BatchWidget(QWidget):
         except ImportError:
             self.combo_voice.addItem("Error loading voices")
 
+    def _browse_output_dir(self):
+        """Open a directory picker for batch output."""
+        folder = QFileDialog.getExistingDirectory(self, "Select Output Folder",
+                                                   self.edit_output_dir.text())
+        if folder:
+            self.edit_output_dir.setText(folder)
+
+    def get_output_dir(self):
+        """Return the user-selected output directory path."""
+        return self.edit_output_dir.text()
+
+    def _toggle_pause(self):
+        """Toggle the pause button text between Pause and Resume."""
+        if self.btn_pause.text() == "⏸ PAUSE":
+            self.btn_pause.setText("▶ RESUME")
+            self.btn_pause.setStyleSheet(
+                "background-color: #5cb85c; color: white; padding: 10px; font-weight: bold;"
+            )
+        else:
+            self.btn_pause.setText("⏸ PAUSE")
+            self.btn_pause.setStyleSheet(
+                "background-color: #f0ad4e; color: white; padding: 10px; font-weight: bold;"
+            )

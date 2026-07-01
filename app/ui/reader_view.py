@@ -1,10 +1,16 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTextBrowser, 
-                             QPushButton, QLabel, QComboBox, QSlider, QFileDialog, QListWidget)
+                             QPushButton, QLabel, QComboBox, QSlider, QFileDialog,
+                             QListWidget, QProgressBar)
 from PyQt6.QtCore import Qt, pyqtSignal
 
+
 class ReaderWidget(QWidget):
+    # Signal emitted when a file is dropped onto the widget
+    file_dropped = pyqtSignal(str)
+
     def __init__(self):
         super().__init__()
+        self.setAcceptDrops(True)
         
         # Main Layout (Split: TOC | Content)
         main_h_layout = QHBoxLayout(self)
@@ -46,41 +52,103 @@ class ReaderWidget(QWidget):
         self.text_browser.setOpenExternalLinks(False)
         self.layout.addWidget(self.text_browser)
         
-        # 3. Controls (Playback + Settings)
+        # 2b. Reading Progress Bar (thin, under text)
+        self.progress_reading = QProgressBar()
+        self.progress_reading.setFixedHeight(4)
+        self.progress_reading.setTextVisible(False)
+        self.progress_reading.setStyleSheet(
+            "QProgressBar { background-color: #333; border: none; }"
+            "QProgressBar::chunk { background-color: #61afef; }"
+        )
+        self.progress_reading.setValue(0)
+        self.layout.addWidget(self.progress_reading)
+        
+        # 3. Playback Controls (Row 1)
         controls_layout = QHBoxLayout()
         
-        # Playback
         self.btn_play = QPushButton("▶ Play")
         self.btn_pause = QPushButton("⏸ Pause")
         self.btn_stop = QPushButton("⏹ Stop")
+        self.btn_skip_prev = QPushButton("⏪")
+        self.btn_skip_prev.setFixedWidth(36)
+        self.btn_skip_prev.setToolTip("Previous sentence")
+        self.btn_skip_next = QPushButton("⏩")
+        self.btn_skip_next.setFixedWidth(36)
+        self.btn_skip_next.setToolTip("Next sentence")
         
         controls_layout.addWidget(self.btn_play)
         controls_layout.addWidget(self.btn_pause)
         controls_layout.addWidget(self.btn_stop)
+        controls_layout.addWidget(self.btn_skip_prev)
+        controls_layout.addWidget(self.btn_skip_next)
         
         # Separator
         controls_layout.addSpacing(20)
         
-        # Voice Settings
+        # Voice Selection
         controls_layout.addWidget(QLabel("Voice:"))
         self.combo_voice = QComboBox()
         controls_layout.addWidget(self.combo_voice)
         
-        controls_layout.addWidget(QLabel("Expression:"))
+        controls_layout.addStretch()
+        self.layout.addLayout(controls_layout)
+
+        # 4. TTS Tuning Controls (Row 2)
+        tuning_layout = QHBoxLayout()
+
+        # Speed (Edge/Google: rate parameter)
+        tuning_layout.addWidget(QLabel("Speed:"))
+        self.slider_speed = QSlider(Qt.Orientation.Horizontal)
+        self.slider_speed.setRange(-50, 100)
+        self.slider_speed.setValue(0)
+        self.slider_speed.setFixedWidth(100)
+        self.slider_speed.setToolTip("TTS speaking rate (-50% to +100%)")
+        self.lbl_speed = QLabel("+0%")
+        self.lbl_speed.setFixedWidth(40)
+        self.slider_speed.valueChanged.connect(
+            lambda v: self.lbl_speed.setText(f"{'+' if v >= 0 else ''}{v}%")
+        )
+        tuning_layout.addWidget(self.slider_speed)
+        tuning_layout.addWidget(self.lbl_speed)
+
+        tuning_layout.addSpacing(12)
+
+        # Pitch (Edge: pitch parameter)
+        tuning_layout.addWidget(QLabel("Pitch:"))
+        self.slider_pitch = QSlider(Qt.Orientation.Horizontal)
+        self.slider_pitch.setRange(-50, 50)
+        self.slider_pitch.setValue(0)
+        self.slider_pitch.setFixedWidth(100)
+        self.slider_pitch.setToolTip("TTS pitch offset (-50Hz to +50Hz)")
+        self.lbl_pitch = QLabel("+0Hz")
+        self.lbl_pitch.setFixedWidth(45)
+        self.slider_pitch.valueChanged.connect(
+            lambda v: self.lbl_pitch.setText(f"{'+' if v >= 0 else ''}{v}Hz")
+        )
+        tuning_layout.addWidget(self.slider_pitch)
+        tuning_layout.addWidget(self.lbl_pitch)
+
+        tuning_layout.addSpacing(12)
+
+        # Expression / Temperature (OmniVoice)
+        tuning_layout.addWidget(QLabel("Expression:"))
         self.slider_expression = QSlider(Qt.Orientation.Horizontal)
         self.slider_expression.setRange(1, 20)  # 0.1 to 2.0 (value / 10)
         self.slider_expression.setValue(10)       # Default: 1.0
         self.slider_expression.setFixedWidth(100)
+        self.slider_expression.setToolTip("OmniVoice expression/temperature (0.1–2.0)")
         self.lbl_expression = QLabel("1.0")
+        self.lbl_expression.setFixedWidth(30)
         self.slider_expression.valueChanged.connect(
             lambda v: self.lbl_expression.setText(f"{v / 10:.1f}")
         )
-        controls_layout.addWidget(self.slider_expression)
-        controls_layout.addWidget(self.lbl_expression)
-        
-        controls_layout.addStretch()
-        
-        self.layout.addLayout(controls_layout)
+        tuning_layout.addWidget(self.slider_expression)
+        tuning_layout.addWidget(self.lbl_expression)
+
+        tuning_layout.addStretch()
+        self.layout.addLayout(tuning_layout)
+
+    # ── Text Display ───────────────────────────────────────────────────
 
     def set_text(self, text):
         self._plain_text = text
@@ -111,3 +179,29 @@ class ReaderWidget(QWidget):
         found = self.text_browser.find(text)
         if found:
             self.text_browser.ensureCursorVisible()
+
+    def update_reading_progress(self, current_sentence, total_sentences):
+        """Update the thin reading progress bar."""
+        if total_sentences > 0:
+            pct = int((current_sentence / total_sentences) * 100)
+            self.progress_reading.setValue(pct)
+        else:
+            self.progress_reading.setValue(0)
+
+    # ── Drag & Drop ────────────────────────────────────────────────────
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            for url in event.mimeData().urls():
+                path = url.toLocalFile().lower()
+                if path.endswith(('.epub', '.pdf', '.docx', '.txt')):
+                    event.acceptProposedAction()
+                    return
+        event.ignore()
+
+    def dropEvent(self, event):
+        for url in event.mimeData().urls():
+            path = url.toLocalFile()
+            if path.lower().endswith(('.epub', '.pdf', '.docx', '.txt')):
+                self.file_dropped.emit(path)
+                return

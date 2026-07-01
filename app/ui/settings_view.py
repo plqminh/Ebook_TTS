@@ -11,6 +11,7 @@ class SettingsWidget(QWidget):
     voice_cloned = pyqtSignal(str, str, str)   # (name, audio_path, ref_text)
     voice_removed = pyqtSignal(str)            # (name)
     transcribe_requested = pyqtSignal(str, str)  # (audio_path, model_size)
+    cache_clear_requested = pyqtSignal()       # clear temp audio cache
 
     def __init__(self):
         super().__init__()
@@ -211,6 +212,11 @@ class SettingsWidget(QWidget):
         
         self.btn_refresh = QPushButton("🔄 Refresh Voices")
         sys_layout.addWidget(self.btn_refresh)
+
+        self.btn_clear_cache = QPushButton("🧹 Clear Audio Cache")
+        self.btn_clear_cache.setToolTip("Delete temporary audio files from temp_audio/")
+        self.btn_clear_cache.clicked.connect(self.cache_clear_requested.emit)
+        sys_layout.addWidget(self.btn_clear_cache)
         
         grp_sys.setLayout(sys_layout)
         layout.addWidget(grp_sys)
